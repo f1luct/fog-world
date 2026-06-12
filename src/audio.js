@@ -359,6 +359,27 @@ export function createAudio(cfg) {
     drip.stop(now + 0.25);
   }
 
+  // 每一步踩在水面上:很轻,几乎只是雨声里的一点变化。
+  function stepSplash(intensity = 0.5) {
+    if (!state.unlocked || state.muted) return;
+    const now = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer;
+    src.playbackRate.value = 0.7 + Math.random() * 0.5;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(900, now);
+    filter.frequency.exponentialRampToValueAtTime(280, now + 0.13);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.02 + intensity * 0.035, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(master);
+    src.start(now);
+    src.stop(now + 0.18);
+  }
+
   // 贩卖机的一声钟——街尽头的 orb。
   function vendingChime() {
     if (!state.unlocked) return;
@@ -415,6 +436,7 @@ export function createAudio(cfg) {
     frostBack,
     carPass,
     puddleSplash,
+    stepSplash,
     vendingChime,
     update,
     get muted() {

@@ -1,8 +1,11 @@
-// 窗外。一条冬夜的雨街:路灯把雨照成细针，湿沥青拖着灯光的倒影，
-// 偶尔一辆车驶过。站台下有只猫，街尽头一台贩卖机为没有人亮着。
-// 没有真实光照——全是自发光、叠加混合和雾，夜自己会把其余补齐。
+// 窗外。一座黑夜里的废墟之城:整条街是一面黑水镜,走一步荡开一圈波纹,
+// 两侧楼影亮着零星暖窗,断拱横在头顶,灯笼慢慢漂,月亮很大。
+// 街尽头,贩卖机还为没有人亮着。雨一直下。
 
 import * as THREE from "three";
+import { createMirrorWater } from "./mirrorwater.js";
+import { createRuins } from "./ruins.js";
+import { createSteering } from "./steering.js";
 
 // ---------------------------------------------------------------- 纹理工厂
 
@@ -19,61 +22,20 @@ function makeGlowTexture(size = 128) {
   return new THREE.CanvasTexture(canvas);
 }
 
-function makeNoiseTexture(size = 256) {
-  // 平滑值噪声:沥青的颗粒、湿度的斑驳全从它来。
-  // 之前用 hash(floor(p)) 的格子噪声,近看全是马赛克方块。
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  const image = ctx.createImageData(size, size);
-  const cell = 16;
-  const gridSide = size / cell;
-  const grid = Array.from({ length: gridSide * gridSide }, () => Math.random());
-  const at = (ix, iy) => grid[((iy % gridSide) + gridSide) % gridSide * gridSide +
-    ((ix % gridSide) + gridSide) % gridSide];
-  const sample = (x, y, scale) => {
-    const gx = Math.floor(x / scale);
-    const gy = Math.floor(y / scale);
-    const fx = x / scale - gx;
-    const fy = y / scale - gy;
-    const sx = fx * fx * (3 - 2 * fx);
-    const sy = fy * fy * (3 - 2 * fy);
-    const a = at(gx, gy);
-    const b = at(gx + 1, gy);
-    const c = at(gx, gy + 1);
-    const d = at(gx + 1, gy + 1);
-    return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
-  };
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const v = sample(x, y, cell) * 0.55 + sample(x * 3 % size, y * 3 % size, cell) * 0.3 +
-        sample(x * 9 % size, y * 9 % size, cell) * 0.15;
-      const o = (y * size + x) * 4;
-      image.data[o] = image.data[o + 1] = image.data[o + 2] = Math.round(v * 255);
-      image.data[o + 3] = 255;
-    }
-  }
-  ctx.putImageData(image, 0, 0);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  return texture;
-}
-
 function makeEnvTexture() {
   // 一张小小的夜:上半冷蓝渐暗,地平线几抹路灯的暖。
-  // 没有它,车玻璃和金属漆反射不到任何东西,暗面是死黑。
+  // 没有它,金属和玻璃反射不到任何东西,暗面是死黑。
   const canvas = document.createElement("canvas");
   canvas.width = 128;
   canvas.height = 64;
   const ctx = canvas.getContext("2d");
   const sky = ctx.createLinearGradient(0, 0, 0, 64);
-  sky.addColorStop(0, "#0d1420");
-  sky.addColorStop(0.45, "#060a12");
+  sky.addColorStop(0, "#101726");
+  sky.addColorStop(0.45, "#080d18");
   sky.addColorStop(0.55, "#100b06");
   sky.addColorStop(1, "#020203");
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, 128, 64);
-  // 地平线上的暖光点(路灯们)
   for (const [x, w, a] of [[18, 14, 0.5], [54, 10, 0.35], [86, 16, 0.45], [112, 9, 0.3]]) {
     const blob = ctx.createRadialGradient(x, 33, 0, x, 33, w);
     blob.addColorStop(0, `rgba(255, 178, 110, ${a})`);
@@ -87,30 +49,6 @@ function makeEnvTexture() {
   return texture;
 }
 
-function makeStreakTexture() {
-  // 湿路面上拖长的灯光倒影:一端亮、一端散。
-  const canvas = document.createElement("canvas");
-  canvas.width = 64;
-  canvas.height = 256;
-  const ctx = canvas.getContext("2d");
-  const g = ctx.createLinearGradient(0, 0, 0, 256);
-  g.addColorStop(0, "rgba(255,255,255,0.9)");
-  g.addColorStop(0.3, "rgba(255,255,255,0.35)");
-  g.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 64, 256);
-  // 横向也收个软边
-  const side = ctx.createLinearGradient(0, 0, 64, 0);
-  side.addColorStop(0, "rgba(0,0,0,1)");
-  side.addColorStop(0.25, "rgba(0,0,0,0)");
-  side.addColorStop(0.75, "rgba(0,0,0,0)");
-  side.addColorStop(1, "rgba(0,0,0,1)");
-  ctx.globalCompositeOperation = "destination-out";
-  ctx.fillStyle = side;
-  ctx.fillRect(0, 0, 64, 256);
-  return new THREE.CanvasTexture(canvas);
-}
-
 function makeVendingTexture() {
   const canvas = document.createElement("canvas");
   canvas.width = 128;
@@ -118,14 +56,12 @@ function makeVendingTexture() {
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = "#10131c";
   ctx.fillRect(0, 0, 128, 256);
-  // 发光的灯箱面板
   const panel = ctx.createLinearGradient(0, 0, 0, 256);
   panel.addColorStop(0, "#cfe8ff");
   panel.addColorStop(0.5, "#9fc4e8");
   panel.addColorStop(1, "#7da8d4");
   ctx.fillStyle = panel;
   ctx.fillRect(10, 12, 78, 180);
-  // 一排排饮料
   const colors = ["#e85d4a", "#f2b134", "#7ec850", "#4aa8e8", "#e8e3d4"];
   for (let row = 0; row < 4; row++) {
     for (let col = 0; col < 4; col++) {
@@ -135,10 +71,8 @@ function makeVendingTexture() {
       ctx.fillRect(16 + col * 18, 22 + row * 42, 4, 28);
     }
   }
-  // 侧边蓝色灯带
   ctx.fillStyle = "#bfe2ff";
   ctx.fillRect(96, 12, 8, 220);
-  // 取物口
   ctx.fillStyle = "#05070c";
   ctx.fillRect(14, 204, 70, 30);
   const texture = new THREE.CanvasTexture(canvas);
@@ -150,129 +84,42 @@ function makeVendingTexture() {
 
 export function createWorld(renderer, cfg, tier, breathPeriod) {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x04060b);
-  scene.fog = new THREE.FogExp2(0x05070d, 0.026);
+  scene.background = new THREE.Color(0x060a14);
+  // 比上一版浅:废墟之城不阴森,夜是透的。
+  scene.fog = new THREE.FogExp2(0x070a14, 0.020);
 
-  const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 260);
+  const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 320);
 
   const glowTexture = makeGlowTexture();
-  const streakTexture = makeStreakTexture();
-  const noiseTexture = makeNoiseTexture();
 
-  // —— 真实光照:夜空的微光垫底,每盏路灯一个点光源 ——
-  // 之前全场只有自发光贴片,物体近看是无明暗的死黑剪影。
-  // 强度是坎德拉:真实路灯几千 cd 量级,夜空环境光也要给足才能读出剪影。
-  scene.add(new THREE.HemisphereLight(0x2a3850, 0x0a0c12, 2.5));
+  // —— 光:夜空环境 + 月光方向光 + 每盏路灯一个点光源 ——
+  scene.add(new THREE.HemisphereLight(0x33415c, 0x0a0c12, 2.8));
   scene.environment = makeEnvTexture();
-  scene.environmentIntensity = 0.35;
-
-  // 路灯灯头的世界坐标,地面 shader 和点光源共用同一张表。
-  const lampHeads = [];
-  for (let i = 0; i < 8; i++) {
-    lampHeads.push(new THREE.Vector3(i % 2 === 0 ? -4.2 : 4.2, 5.05, -8 - i * 14));
-  }
+  scene.environmentIntensity = 0.4;
+  const moonLight = new THREE.DirectionalLight(0xbac8e0, 0.55);
+  moonLight.position.set(12, 30, -155);
+  scene.add(moonLight);
 
   const frameTarget = new THREE.WebGLRenderTarget(2, 2, { depthBuffer: true });
-
   const touchEvents = [];
   const street = cfg.streetLength;
 
-  // ------------------------------------------------ 地面:湿沥青
-  // 自带一套逐像素光照:8 盏路灯的漫反射光洼 + 视角相关的湿面高光拖影
-  // + 只在受光处闪的雨粒,最后手动套与场景一致的指数雾。
-  const groundMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-      u_time: { value: 0 },
-      u_noise: { value: noiseTexture },
-      u_lamps: { value: lampHeads },
-      u_lampColor: { value: new THREE.Color(0xffb877) },
-      u_vending: { value: new THREE.Vector3(3.4, 1.2, -street + 8) },
-      u_vendingColor: { value: new THREE.Color(0x9fc8e8) },
-    },
-    vertexShader: /* glsl */ `
-      varying vec3 v_world;
-      void main() {
-        vec4 wp = modelMatrix * vec4(position, 1.0);
-        v_world = wp.xyz;
-        gl_Position = projectionMatrix * viewMatrix * wp;
-      }
-    `,
-    fragmentShader: /* glsl */ `
-      varying vec3 v_world;
-      uniform float u_time;
-      uniform sampler2D u_noise;
-      uniform vec3 u_lamps[8];
-      uniform vec3 u_lampColor;
-      uniform vec3 u_vending;
-      uniform vec3 u_vendingColor;
-
-      void main() {
-        vec2 p = v_world.xz;
-        // 多尺度平滑噪声:粗斑驳 + 细颗粒
-        float coarse = texture2D(u_noise, p * 0.020).r;
-        float mid = texture2D(u_noise, p * 0.11).r;
-        float fine = texture2D(u_noise, p * 0.55).r;
-        float albedoVar = 0.62 + 0.42 * coarse + 0.26 * (mid - 0.5) + 0.20 * (fine - 0.5);
-        vec3 albedo = vec3(0.040, 0.046, 0.060) * albedoVar;
-        albedo += vec3(0.010, 0.011, 0.013) * exp(-abs(v_world.x) * 0.28);
-
-        // 噪声梯度当假法线:湿面高光被微起伏揉碎才像沥青不像镜子
-        float e = 0.4;
-        float hx = texture2D(u_noise, (p + vec2(e, 0.0)) * 0.11).r - mid;
-        float hz = texture2D(u_noise, (p + vec2(0.0, e)) * 0.11).r - mid;
-        vec3 normal = normalize(vec3(-hx * 1.1, 1.0, -hz * 1.1));
-        vec3 viewDir = normalize(cameraPosition - v_world);
-        float wet = 0.25 + 0.55 * coarse; // 湿度成片:有的地方亮汪汪,有的发涩
-
-        vec3 diffuse = vec3(0.0);
-        vec3 specular = vec3(0.0);
-        for (int i = 0; i < 8; i++) {
-          vec3 toLamp = u_lamps[i] - v_world;
-          float d2 = dot(toLamp, toLamp);
-          vec3 L = toLamp * inversesqrt(d2);
-          float atten = 190.0 / (1.0 + d2);
-          diffuse += u_lampColor * atten * max(dot(normal, L), 0.0);
-          vec3 H = normalize(L + viewDir);
-          specular += u_lampColor * atten * pow(max(dot(normal, H), 0.0), 120.0) * 0.32;
-        }
-        { // 贩卖机的冷光
-          vec3 toLamp = u_vending - v_world;
-          float d2 = dot(toLamp, toLamp);
-          vec3 L = toLamp * inversesqrt(d2);
-          float atten = 20.0 / (1.0 + d2);
-          diffuse += u_vendingColor * atten * max(dot(normal, L), 0.0);
-          vec3 H = normalize(L + viewDir);
-          specular += u_vendingColor * atten * pow(max(dot(normal, H), 0.0), 90.0) * 0.4;
-        }
-
-        // 雨粒的闪:细噪声过阈值,且只在被照亮的地方稀疏地闪
-        float glint = smoothstep(0.93, 1.0, texture2D(u_noise, p * 2.3 + u_time * 0.015).r *
-          texture2D(u_noise, p * 5.1 - u_time * 0.011).r * 1.6);
-        specular += glint * diffuse * 0.45;
-
-        vec3 color = albedo * (vec3(0.22, 0.28, 0.42) + diffuse) + specular * wet;
-
-        // 与场景一致的 FogExp2(0x05070d, 0.026)
-        float depth = distance(cameraPosition, v_world);
-        float fogFactor = exp(-0.026 * 0.026 * depth * depth);
-        color = mix(vec3(0.020, 0.027, 0.051), color, fogFactor);
-        gl_FragColor = vec4(color, 1.0);
-      }
-    `,
-    fog: false,
+  // ------------------------------------------------ 水镜地面
+  const water = createMirrorWater(renderer, {
+    width: 64,
+    length: 240,
+    centerZ: -50,
   });
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(80, street + 120),
-    groundMaterial,
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.z = -street / 2 + 10;
-  scene.add(ground);
+  scene.add(water.mesh);
 
-  // ------------------------------------------------ 路灯
+  // ------------------------------------------------ 废墟之城
+  const ruins = createRuins({ streetHalfWidth: 9, length: street });
+  scene.add(ruins.group);
+
+  // ------------------------------------------------ 路灯(残存的,有几盏歪了)
   const lampColor = new THREE.Color(0xffb877);
   const lamps = [];
-  const reflectionStreaks = [];
+  const lampDefs = [];
   const poleGeometry = new THREE.CylinderGeometry(0.06, 0.09, 5.2, 12);
   const poleMaterial = new THREE.MeshStandardMaterial({
     color: 0x2b3038,
@@ -292,7 +139,6 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
       varying float v_y;
       uniform vec3 u_color;
       void main() {
-        // 顶端贴着灯头最亮,向下很快散没——雨雾里的光锥是渐隐的,不是帐篷。
         float a = pow(v_y, 3.2) * 0.055;
         gl_FragColor = vec4(u_color, a);
       }
@@ -348,7 +194,6 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
     cone.position.y = 2.6;
     lamp.add(cone);
 
-    // 真实点光源:照亮杆子、长椅、猫、走近的你。lite 档隔盏点亮。
     if (tier === "full" || i % 2 === 0) {
       const light = new THREE.PointLight(0xffb877, 420, 30, 2);
       light.position.set(0, 5.0, 0);
@@ -356,25 +201,11 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
     }
 
     lamp.position.set(x, 0, z);
+    // 废墟里的灯有几盏歪着,还坚持亮。
+    lamp.rotation.z = [0, 0.06, -0.04, 0, 0.1, 0, -0.07, 0.03][i];
     scene.add(lamp);
     lamps.push({ group: lamp, x, z, glow, lastTouchAt: -100 });
-
-    // 倒影长条:每帧转向镜头。
-    const streak = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.8, 9),
-      new THREE.MeshBasicMaterial({
-        map: streakTexture,
-        color: lampColor,
-        transparent: true,
-        opacity: 0.30,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
-    streak.rotation.x = -Math.PI / 2;
-    streak.position.set(x, 0.03, z);
-    scene.add(streak);
-    reflectionStreaks.push({ mesh: streak, x, z, seed: Math.random() * 10 });
+    lampDefs.push({ x, z, r: 0.5 });
   }
 
   // ------------------------------------------------ 雨
@@ -446,339 +277,12 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
     rainMesh = rain;
   }
 
-  // 性能降级:只画前一部分雨丝。
   function setRainDensity(fraction) {
     rainMesh.geometry.setDrawRange(0, Math.floor(rainCount * fraction) * 2);
   }
 
-  // ------------------------------------------------ 水洼
-  const puddles = [];
-  const puddleDefs = [
-    { x: -1.6, z: -16, r: 1.5 },
-    { x: 2.4, z: -33, r: 1.1 },
-    { x: -3.0, z: -52, r: 1.8 },
-    { x: 0.8, z: -70, r: 1.3 },
-    { x: -1.2, z: -88, r: 1.5 },
-  ];
-  for (const def of puddleDefs) {
-    // 离最近的灯越近,水面反着越多暖光——不再随机。
-    let nearestLamp = Infinity;
-    for (const head of lampHeads) {
-      nearestLamp = Math.min(nearestLamp, Math.hypot(def.x - head.x, def.z - head.z));
-    }
-    const uniforms = {
-      u_time: { value: 0 },
-      u_splash: { value: 0 },
-      u_warm: { value: Math.min(2.4 / Math.max(nearestLamp, 1.2), 1) },
-    };
-    const mesh = new THREE.Mesh(
-      new THREE.CircleGeometry(def.r, 28),
-      new THREE.ShaderMaterial({
-        uniforms,
-        vertexShader: /* glsl */ `
-          varying vec2 v_local;
-          varying vec3 v_world;
-          void main() {
-            v_local = position.xy;
-            v_world = (modelMatrix * vec4(position, 1.0)).xyz;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: /* glsl */ `
-          varying vec2 v_local;
-          varying vec3 v_world;
-          uniform float u_time;
-          uniform float u_splash;
-          uniform float u_warm;
-          float hash(vec2 p) {
-            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-          }
-          void main() {
-            float r = length(v_local);
-            // 水面本体:比沥青更深的一面暗镜，朝灯的方向带点暖。
-            vec3 color = vec3(0.018, 0.024, 0.038);
-            color += vec3(0.05, 0.035, 0.02) * u_warm * (0.4 + 0.3 * v_local.y);
-            // 雨点的环:两层随机相位的扩散圆。
-            float rings = 0.0;
-            for (int layer = 0; layer < 2; layer++) {
-              float fl = float(layer);
-              vec2 p = v_local * (1.8 + fl * 1.4) + fl * 3.7;
-              vec2 cell = floor(p);
-              vec2 f = fract(p) - 0.5;
-              float h = hash(cell + fl * 13.0);
-              float phase = fract(u_time * (0.45 + 0.35 * h) + h * 7.0);
-              vec2 jitter = vec2(hash(cell + 1.3), hash(cell + 4.7)) * 0.4 - 0.2;
-              float ringR = phase * 0.42;
-              float ring = smoothstep(0.05, 0.0, abs(length(f - jitter) - ringR));
-              rings += ring * (1.0 - phase) * (0.5 + u_splash * 2.0);
-            }
-            color += vec3(0.35, 0.38, 0.42) * rings * 0.30;
-            // 与场景一致的雾,远处的水洼沉进夜里
-            float depth = distance(cameraPosition, v_world);
-            color = mix(vec3(0.020, 0.027, 0.051), color, exp(-0.026 * 0.026 * depth * depth));
-            float alpha = smoothstep(1.0, 0.78, r);
-            gl_FragColor = vec4(color, alpha * 0.92);
-          }
-        `,
-        transparent: true,
-        depthWrite: false,
-      }),
-    );
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(def.x, 0.025, def.z);
-    mesh.scale.setScalar(def.r);
-    mesh.geometry.scale(1 / def.r, 1 / def.r, 1); // 让 v_local 归一化到单位圆
-    scene.add(mesh);
-    puddles.push({ ...def, uniforms, lastSplashAt: -100 });
-  }
-
-  // ------------------------------------------------ 车的模型
-  // 低多边形轿车:收肩线的下车身 + 梯形玻璃座舱 + 轮子/后视镜/尾灯。
-  // 停在路边的和深夜路过的,是同一辆车的两种命运。
-
-  // 把盒子的上层顶点向内收,方正的盒子立刻有了车的斜面。
-  function taperTop(geometry, scaleX, scaleZ, shiftZ = 0) {
-    const pos = geometry.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      if (pos.getY(i) > 0) {
-        pos.setX(i, pos.getX(i) * scaleX);
-        pos.setZ(i, pos.getZ(i) * scaleZ + shiftZ);
-      }
-    }
-    geometry.computeVertexNormals();
-    return geometry;
-  }
-
-  function buildCar() {
-    const group = new THREE.Group();
-    const paint = new THREE.MeshStandardMaterial({
-      color: 0x1c2330,
-      metalness: 0.75,
-      roughness: 0.3,
-    });
-    const glass = new THREE.MeshStandardMaterial({
-      color: 0x0a0d14,
-      metalness: 0.9,
-      roughness: 0.16,
-    });
-    const rubber = new THREE.MeshStandardMaterial({ color: 0x0a0b0d, roughness: 0.92 });
-
-    // 下车身:顶面四角微收出肩线,底部留出离地间隙
-    const body = new THREE.Mesh(taperTop(new THREE.BoxGeometry(1.8, 0.6, 4.35), 0.93, 0.985), paint);
-    body.position.y = 0.61;
-    group.add(body);
-
-    // 座舱:上窄下宽的梯形,顶部整体后移——前挡风比后窗更斜
-    const cabin = new THREE.Mesh(
-      taperTop(new THREE.BoxGeometry(1.64, 0.5, 2.4), 0.74, 0.58, -0.22),
-      glass,
-    );
-    cabin.position.set(0, 1.16, -0.18);
-    group.add(cabin);
-
-    // 四只轮子
-    const wheelGeometry = new THREE.CylinderGeometry(0.31, 0.31, 0.22, 18);
-    wheelGeometry.rotateZ(Math.PI / 2);
-    for (const [wx, wz] of [[-0.78, -1.32], [0.78, -1.32], [-0.78, 1.32], [0.78, 1.32]]) {
-      const wheel = new THREE.Mesh(wheelGeometry, rubber);
-      wheel.position.set(wx, 0.31, wz);
-      group.add(wheel);
-    }
-
-    // 后视镜
-    for (const mx of [-0.92, 0.92]) {
-      const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.07, 0.06), paint);
-      mirror.position.set(mx, 1.0, -1.02);
-      group.add(mirror);
-    }
-
-    // 尾灯反光条(车尾朝 +z)与熄火的头灯
-    for (const lx of [-0.6, 0.6]) {
-      const tail = new THREE.Mesh(
-        new THREE.BoxGeometry(0.36, 0.09, 0.03),
-        new THREE.MeshStandardMaterial({
-          color: 0x140505,
-          emissive: 0x4d0f0a,
-          emissiveIntensity: 0.7,
-          roughness: 0.3,
-        }),
-      );
-      tail.position.set(lx, 0.84, 2.17);
-      group.add(tail);
-      const headlight = new THREE.Mesh(
-        new THREE.BoxGeometry(0.34, 0.1, 0.03),
-        new THREE.MeshStandardMaterial({
-          color: 0x1a222e,
-          metalness: 0.9,
-          roughness: 0.15,
-        }),
-      );
-      headlight.position.set(lx, 0.8, -2.17);
-      group.add(headlight);
-    }
-
-    // 接地阴影:车压住自己的那片暗
-    const shadow = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.6, 5.2),
-      new THREE.MeshBasicMaterial({
-        map: glowTexture,
-        color: 0x000000,
-        transparent: true,
-        opacity: 0.6,
-        depthWrite: false,
-      }),
-    );
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.position.y = 0.015;
-    group.add(shadow);
-
-    return group;
-  }
-
-  // ------------------------------------------------ 你的车(起点)
-  const car = new THREE.Group();
-  {
-    car.add(buildCar());
-    // 你刚才坐的位置，窗里还留着一点暖。
-    const windowGlow = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.9, 0.42),
-      new THREE.MeshBasicMaterial({
-        color: 0xffc488,
-        transparent: true,
-        opacity: 0.5,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
-    windowGlow.position.set(-0.74, 1.16, 0.35);
-    windowGlow.rotation.y = -Math.PI / 2;
-    windowGlow.scale.set(0.8, 0.75, 1);
-    car.add(windowGlow);
-    const innerGlow = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: glowTexture,
-      color: 0xffc488,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      opacity: 0.3,
-    }));
-    innerGlow.position.set(-0.78, 1.15, 0.35);
-    innerGlow.scale.setScalar(1.4);
-    car.add(innerGlow);
-    car.position.set(1.9, 0, 2.8);
-    car.rotation.y = 0.04;
-    scene.add(car);
-  }
-
-  // ------------------------------------------------ 公交站台与猫
-  const shelter = new THREE.Group();
-  const cat = { eyes: [], group: null, lastTouchAt: -100 };
-  {
-    const frameMaterial = new THREE.MeshStandardMaterial({
-      color: 0x272c36,
-      metalness: 0.5,
-      roughness: 0.45,
-    });
-    for (const px of [-1.5, 1.5]) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.4, 0.08), frameMaterial);
-      post.position.set(px, 1.2, 0);
-      shelter.add(post);
-    }
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.06, 1.4), frameMaterial);
-    roof.position.y = 2.4;
-    shelter.add(roof);
-    const back = new THREE.Mesh(
-      new THREE.PlaneGeometry(3.2, 1.8),
-      new THREE.MeshStandardMaterial({
-        color: 0x1a2433,
-        transparent: true,
-        opacity: 0.3,
-        roughness: 0.15,
-        metalness: 0.1,
-        side: THREE.DoubleSide,
-      }),
-    );
-    back.position.set(0, 1.4, -0.62);
-    shelter.add(back);
-    const bench = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.07, 0.4), frameMaterial);
-    bench.position.set(0, 0.46, -0.3);
-    shelter.add(bench);
-    for (const lx of [-1.05, 1.05]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.44, 0.34), frameMaterial);
-      leg.position.set(lx, 0.22, -0.3);
-      shelter.add(leg);
-    }
-
-    // 猫:坐姿——胸脯、头、双耳、绕在脚边的尾巴,在灯光里有真实明暗。
-    const catGroup = new THREE.Group();
-    const catMaterial = new THREE.MeshStandardMaterial({
-      color: 0x121419,
-      roughness: 0.97,
-    });
-    const torso = new THREE.Mesh(new THREE.SphereGeometry(0.115, 24, 18), catMaterial);
-    torso.scale.set(0.88, 1.2, 1.0);
-    torso.position.y = 0.15;
-    catGroup.add(torso);
-    const haunch = new THREE.Mesh(new THREE.SphereGeometry(0.105, 24, 18), catMaterial);
-    haunch.scale.set(1.1, 0.85, 1.15);
-    haunch.position.set(0, 0.085, -0.07);
-    catGroup.add(haunch);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.072, 24, 18), catMaterial);
-    head.position.set(0, 0.305, 0.075);
-    catGroup.add(head);
-    for (const ex of [-0.046, 0.046]) {
-      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.027, 0.06, 10), catMaterial);
-      ear.position.set(ex, 0.392, 0.04);
-      ear.rotation.x = -0.18;
-      ear.rotation.z = ex < 0 ? 0.22 : -0.22;
-      catGroup.add(ear);
-    }
-    const tail = new THREE.Mesh(
-      new THREE.TorusGeometry(0.095, 0.017, 10, 18, Math.PI * 1.25),
-      catMaterial,
-    );
-    tail.rotation.x = -Math.PI / 2;
-    tail.rotation.z = 0.4;
-    tail.position.set(0.06, 0.026, 0.03);
-    catGroup.add(tail);
-    // 接地的一小片暗影
-    const catShadow = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.5, 0.45),
-      new THREE.MeshBasicMaterial({
-        map: glowTexture,
-        color: 0x000000,
-        transparent: true,
-        opacity: 0.5,
-        depthWrite: false,
-      }),
-    );
-    catShadow.rotation.x = -Math.PI / 2;
-    catShadow.position.y = 0.012;
-    catGroup.add(catShadow);
-    for (const ex of [-0.032, 0.032]) {
-      const eye = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: glowTexture,
-        color: 0xd8e89a,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        opacity: 0.95,
-      }));
-      eye.position.set(ex, 0.318, 0.122);
-      eye.scale.set(0.026, 0.018, 1);
-      catGroup.add(eye);
-      cat.eyes.push(eye);
-    }
-    catGroup.position.set(0.9, 0, -0.32);
-    catGroup.rotation.y = 1.15; // 面朝街道——走近的人先看见那双眼睛
-    shelter.add(catGroup);
-    cat.group = catGroup;
-
-    shelter.position.set(-3.6, 0, -48);
-    shelter.rotation.y = 0.08;
-    scene.add(shelter);
-  }
-
   // ------------------------------------------------ 贩卖机(街的尽头)
-  const vending = { group: new THREE.Group(), lastTouchAt: -100, hummed: false };
+  const vending = { group: new THREE.Group(), lastTouchAt: -100 };
   {
     const shellMaterial = new THREE.MeshStandardMaterial({
       color: 0x2a3040,
@@ -792,7 +296,6 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
         shellMaterial,
         shellMaterial,
         shellMaterial,
-        // 正面是发光的灯箱:自发光贴图,不吃环境暗
         new THREE.MeshStandardMaterial({
           color: 0x05060a,
           emissive: 0xffffff,
@@ -805,10 +308,6 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
     );
     box.position.y = 0.95;
     vending.group.add(box);
-    // 它把周围一小片夜染成冷色。
-    const vendingLight = new THREE.PointLight(0x9fc8e8, 40, 11, 2);
-    vendingLight.position.set(0, 1.2, 0.7);
-    vending.group.add(vendingLight);
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: glowTexture,
       color: 0x9fc8e8,
@@ -819,32 +318,17 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
     glow.position.set(0, 1.1, 0.5);
     glow.scale.set(2.6, 3.2, 1);
     vending.group.add(glow);
+    const vendingLight = new THREE.PointLight(0x9fc8e8, 40, 11, 2);
+    vendingLight.position.set(0, 1.2, 0.7);
+    vending.group.add(vendingLight);
     vending.group.position.set(3.4, 0, -street + 8);
     vending.group.rotation.y = -0.5;
     scene.add(vending.group);
-
-    // 它的倒影。
-    const streak = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.1, 5),
-      new THREE.MeshBasicMaterial({
-        map: streakTexture,
-        color: 0x9fc8e8,
-        transparent: true,
-        opacity: 0.25,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
-    streak.rotation.x = -Math.PI / 2;
-    streak.position.set(3.4, 0.03, -street + 8);
-    scene.add(streak);
-    reflectionStreaks.push({ mesh: streak, x: 3.4, z: -street + 8, seed: 3 });
   }
 
-  // ------------------------------------------------ 远处的城市光
+  // ------------------------------------------------ 远处的城市余光
   for (const [x, z, scaleX, color, opacity] of [
-    [0, -street - 50, 110, 0x52301a, 0.85],
-    [-35, -street - 40, 60, 0x3c2616, 0.6],
+    [-30, -street - 55, 70, 0x3c2616, 0.5],
     [25, 40, 80, 0x32220f, 0.45],
   ]) {
     const cityGlow = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -853,84 +337,22 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       opacity,
-      fog: false, // 它在雾的另一头:整片城市隔着雨发亮
+      fog: false,
     }));
     cityGlow.position.set(x, 5, z);
     cityGlow.scale.set(scaleX, 22, 1);
     scene.add(cityGlow);
   }
 
-  // ------------------------------------------------ 过路车
-  const passingCar = {
-    active: false,
-    group: new THREE.Group(),
-    startAt: 0,
-    duration: 8,
-    fromZ: 0,
-    toZ: 0,
-    noted: false,
-  };
-  {
-    for (const hx of [-0.55, 0.55]) {
-      const head = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: glowTexture,
-        color: 0xfff2cc,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        opacity: 0.95,
-      }));
-      head.position.set(hx, 0.65, -2.1); // 车头朝 -z(行驶方向)
-      head.scale.setScalar(1.5);
-      passingCar.group.add(head);
-      const tail = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: glowTexture,
-        color: 0xff3826,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        opacity: 0.8,
-      }));
-      tail.position.set(hx, 0.6, 2.1); // 从背后赶上来时,你看见的是这两点红
-      tail.scale.setScalar(0.7);
-      passingCar.group.add(tail);
-    }
-    passingCar.group.add(buildCar());
-    const splashGlow = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: glowTexture,
-      color: 0x8898ac,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      opacity: 0.25,
-    }));
-    splashGlow.position.set(0, 0.3, 0);
-    splashGlow.scale.set(4, 1.2, 1);
-    passingCar.group.add(splashGlow);
-    // 头灯倒影
-    const streak = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.4, 11),
-      new THREE.MeshBasicMaterial({
-        map: streakTexture,
-        color: 0xfff2cc,
-        transparent: true,
-        opacity: 0.3,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
-    streak.rotation.x = -Math.PI / 2;
-    streak.rotation.z = Math.PI; // 亮端朝车头(-z 侧)
-    streak.position.set(0, 0.04, -7);
-    passingCar.group.add(streak);
-    passingCar.group.visible = false;
-    scene.add(passingCar.group);
-  }
-
-  function summonCarPass() {
-    if (passingCar.active) return;
-    passingCar.active = true;
-    passingCar.noted = false;
-    passingCar.startAt = -1; // 下一帧填充
-    passingCar.group.visible = true;
-  }
+  // ------------------------------------------------ 避障
+  const steering = createSteering(
+    [
+      ...ruins.colliders,
+      ...lampDefs,
+      { x: 3.4, z: -street + 8, r: 1.3 }, // 贩卖机
+    ],
+    { minX: -8, maxX: 8, minZ: -street + 4, maxZ: 5.5 },
+  );
 
   // ------------------------------------------------ 呼出的白气
   const puffs = [];
@@ -966,32 +388,33 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
     });
   }
 
-  // ------------------------------------------------ 导航:漂移 / 步行
+  // ------------------------------------------------ 导航:漂移 / 步行,皆有避障
   const nav = {
     mode: "drift",
     x: 0.6,
     z: 1.2,
-    yaw: 0,        // 0 = 朝 -z(街的深处)
+    yaw: 0,
     pitch: 0,
     velX: 0,
     velZ: 0,
-    keyBlend: 0,   // 0 漂移 1 步行
+    keyBlend: 0,
     lastKeyAt: -10,
     bobPhase: 0,
+    lastStepPhase: 0,
   };
 
   function beginArrival() {
     nav.x = 0.6;
     nav.z = 1.2;
     nav.yaw = 0;
-    nav.pitch = 0.06; // 到外面第一眼:微微抬头看雨
+    nav.pitch = 0.06;
     nav.velX = 0;
     nav.velZ = 0;
     nav.keyBlend = 0;
     nav.mode = "drift";
+    water.splash(nav.x, nav.z, 0.8, 1.2); // 落地的第一圈
   }
 
-  // 车窗视角(车里看出去),微微偏向有灯的那侧。
   const carView = { x: 0.5, y: 1.26, z: 2.6, yaw: 0.1, pitch: 0.02 };
   let viewMode = "car";
 
@@ -1001,7 +424,6 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
 
   function updateNav(dt, time, navInput, drag) {
     const walk = cfg.walk;
-    // 拖动永远在转头。
     nav.yaw -= drag.x * walk.lookSpeed;
     nav.pitch = Math.max(
       -walk.maxPitch,
@@ -1015,7 +437,6 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
     nav.keyBlend += ((wantWalk ? 1 : 0) - nav.keyBlend) * Math.min(blendRate * 3, 1);
     nav.mode = nav.keyBlend > 0.5 ? "walk" : "drift";
 
-    // 步行速度(沿视线方向)。
     const sin = Math.sin(nav.yaw);
     const cos = Math.cos(nav.yaw);
     const targetVelX = (navInput.x * cos - navInput.z * sin) * walk.speed;
@@ -1024,27 +445,44 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
     nav.velX += (targetVelX - nav.velX) * Math.min(accel * 3, 1);
     nav.velZ += (targetVelZ - nav.velZ) * Math.min(accel * 3, 1);
 
-    // 漂移:夜带着你慢慢往街深处走(沿视线水平投影)。
     const driftVelX = -sin * cfg.driftSpeed;
     const driftVelZ = -cos * cfg.driftSpeed;
-
     const moveX = driftVelX * (1 - nav.keyBlend) + nav.velX * nav.keyBlend;
     const moveZ = driftVelZ * (1 - nav.keyBlend) + nav.velZ * nav.keyBlend;
-    nav.x += moveX * dt;
-    nav.z += moveZ * dt;
 
-    // 街的边界。
-    nav.x = Math.max(-6.5, Math.min(6.5, nav.x));
-    nav.z = Math.max(-street + 4, Math.min(5.5, nav.z));
+    // 避障与空气墙:位置由 steering 结算,快撞上就自己偏开。
+    const resolved = steering.step({
+      x: nav.x, z: nav.z, yaw: nav.yaw, moveX, moveZ, dt,
+    });
+    nav.x = resolved.x;
+    nav.z = resolved.z;
+    nav.yaw += resolved.yawNudge;
 
-    nav.bobPhase += Math.hypot(moveX, moveZ) * dt * 4.4;
+    const speed = Math.hypot(moveX, moveZ);
+    nav.bobPhase += speed * dt * 4.4;
+
+    // 脚步:每跨一步,水面荡开一圈。
+    const stepIndex = Math.floor(nav.bobPhase / Math.PI);
+    if (stepIndex !== nav.lastStepPhase && speed > 0.3) {
+      nav.lastStepPhase = stepIndex;
+      water.splash(
+        nav.x - sin * 0.35,
+        nav.z - cos * 0.35,
+        0.5 + Math.min(speed * 0.15, 0.35),
+        0.65,
+      );
+      touchEvents.push({ kind: "step", intensity: Math.min(speed / 2, 1) });
+    } else if (speed > 0.05) {
+      // 慢漂时水面被轻轻犁开。
+      water.stir(nav.x, nav.z, 0.8, time);
+    }
   }
 
   // ------------------------------------------------ 事件检测
   let endNoted = false;
+  let archNotedAt = -100;
 
   function checkEncounters(time) {
-    // 路灯:走进光锥。
     for (const lamp of lamps) {
       const d = Math.hypot(nav.x - lamp.x, nav.z - lamp.z);
       if (d < 2.4 && time - lamp.lastTouchAt > 30) {
@@ -1052,24 +490,11 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
         touchEvents.push({ kind: "lamp" });
       }
     }
-    // 水洼:踩进去。
-    for (const puddle of puddles) {
-      const d = Math.hypot(nav.x - puddle.x, nav.z - puddle.z);
-      if (d < puddle.r * 0.9 && time - puddle.lastSplashAt > 6) {
-        puddle.lastSplashAt = time;
-        puddle.uniforms.u_splash.value = 1;
-        touchEvents.push({ kind: "puddle" });
-      }
+    // 断拱下(z≈-44 横跨街道)。
+    if (Math.abs(nav.z + 44) < 2 && Math.abs(nav.x) < 6 && time - archNotedAt > 60) {
+      archNotedAt = time;
+      touchEvents.push({ kind: "arch" });
     }
-    // 猫。
-    {
-      const d = Math.hypot(nav.x - (-2.7), nav.z - (-48.3));
-      if (d < 2.6 && time - cat.lastTouchAt > 45) {
-        cat.lastTouchAt = time;
-        touchEvents.push({ kind: "cat" });
-      }
-    }
-    // 贩卖机。
     {
       const d = Math.hypot(nav.x - 3.4, nav.z - (-street + 8));
       if (d < 2.8 && time - vending.lastTouchAt > 40) {
@@ -1077,7 +502,6 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
         touchEvents.push({ kind: "vending" });
       }
     }
-    // 街的尽头。
     if (!endNoted && nav.z < -street + 12) {
       endNoted = true;
       touchEvents.push({ kind: "end" });
@@ -1086,15 +510,12 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
 
   // ------------------------------------------------ 主更新
   function update(dt, time, breathCycle, navInput = null, drag = { x: 0, y: 0 }) {
-    groundMaterial.uniforms.u_time.value = time;
     rainUniforms.u_time.value = time;
 
     if (viewMode === "car") {
       camera.position.set(carView.x, carView.y, carView.z);
       camera.rotation.set(carView.pitch, carView.yaw, 0, "YXZ");
-      car.visible = false; // 自己的车,从里面看不见
     } else {
-      car.visible = true;
       updateNav(dt, time, navInput ?? { x: 0, z: 0, active: false }, drag);
       const bob = Math.sin(nav.bobPhase) * 0.035;
       const sway = Math.sin(time * (Math.PI * 2) / breathPeriod) * 0.02;
@@ -1105,21 +526,11 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
 
     rainUniforms.u_center.value.copy(camera.position);
 
-    // 倒影长条朝向镜头。
-    for (const streak of reflectionStreaks) {
-      const dx = camera.position.x - streak.x;
-      const dz = camera.position.z - streak.z;
-      const len = Math.hypot(dx, dz) || 1;
-      const reach = Math.min(4.5 + len * 0.18, 9);
-      streak.mesh.rotation.z = Math.atan2(dx / len, dz / len);
-      streak.mesh.position.set(
-        streak.x + (dx / len) * reach * 0.5,
-        streak.mesh.position.y,
-        streak.z + (dz / len) * reach * 0.5,
-      );
-      streak.mesh.scale.y = reach / 9;
-      streak.mesh.material.opacity = 0.22 + 0.08 * Math.sin(time * 11 + streak.seed * 7);
-    }
+    // 水镜模拟域跟着镜头走。
+    water.update(dt, time, camera.position.x, camera.position.z);
+
+    // 废墟:窗的微闪、灯笼的漂移。
+    ruins.update(dt, time);
 
     // 路灯轻微呼吸 + 偶尔闪一下。
     for (let i = 0; i < lamps.length; i++) {
@@ -1127,44 +538,6 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
       let flicker = 0.85 + 0.07 * Math.sin(time * 1.3 + i * 2.1);
       if (Math.sin(time * 17 + i * 31.7) > 0.996) flicker *= 0.6;
       lamp.glow.material.opacity = flicker;
-    }
-
-    // 水洼涟漪衰减。
-    for (const puddle of puddles) {
-      puddle.uniforms.u_time.value = time;
-      puddle.uniforms.u_splash.value = Math.max(puddle.uniforms.u_splash.value - dt * 0.8, 0);
-    }
-
-    // 猫眨眼:每 3–6 秒闭 0.12 秒。
-    {
-      const blinkSeed = Math.floor(time / 4.3);
-      const blinkPhase = time / 4.3 - blinkSeed;
-      const closed = blinkPhase > 0.93 && blinkPhase < 0.96;
-      for (const eye of cat.eyes) {
-        eye.scale.y = closed ? 0.003 : 0.018;
-      }
-    }
-
-    // 过路车。
-    if (passingCar.active) {
-      if (passingCar.startAt < 0) {
-        passingCar.startAt = time;
-        passingCar.fromZ = camera.position.z + 26;
-        passingCar.toZ = camera.position.z - 70;
-        passingCar.duration = 8;
-      }
-      const progress = (time - passingCar.startAt) / passingCar.duration;
-      if (progress >= 1) {
-        passingCar.active = false;
-        passingCar.group.visible = false;
-      } else {
-        const z = passingCar.fromZ + (passingCar.toZ - passingCar.fromZ) * progress;
-        passingCar.group.position.set(-2.4, 0, z);
-        if (!passingCar.noted && z < camera.position.z + 4 && z > camera.position.z - 8) {
-          passingCar.noted = true;
-          touchEvents.push({ kind: "car", pan: -0.6 });
-        }
-      }
     }
 
     // 白气。
@@ -1187,15 +560,17 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
   function resize(width, height, pixelRatio) {
     camera.aspect = width / Math.max(height, 1);
     camera.updateProjectionMatrix();
-    // 帧纹理:透过雾看本来就糊,降一档分辨率把预算留给世界本身。
     const scale = 0.6;
     frameTarget.setSize(
       Math.max(2, Math.round(width * pixelRatio * scale)),
       Math.max(2, Math.round(height * pixelRatio * scale)),
     );
+    water.resize(width, height, pixelRatio);
   }
 
   function render(toScreen) {
+    // 先渲水镜的倒影(内部会临时藏起水面自己)。
+    water.renderReflection(scene, camera);
     const previous = renderer.getRenderTarget();
     renderer.setRenderTarget(toScreen ? null : frameTarget);
     renderer.render(scene, camera);
@@ -1207,8 +582,11 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
   }
 
   function warmup() {
-    // 趁玩家还在擦玻璃,先把整套着色器编译掉,穿越时不掉帧。
     render(false);
+  }
+
+  function setQuality(level) {
+    water.setQuality(level);
   }
 
   return {
@@ -1217,11 +595,12 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
     resize,
     setView,
     beginArrival,
-    summonCarPass,
     breathPuff,
     consumeTouchEvents,
     warmup,
     setRainDensity,
+    setQuality,
+    summonLanternPass: () => ruins.summonLanternPass(nav.x, nav.z),
     nav,
     scene,
     camera,
@@ -1233,7 +612,6 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
         navMode: nav.mode,
         x: Number(nav.x.toFixed(1)),
         z: Number(nav.z.toFixed(1)),
-        carPass: passingCar.active,
       };
     },
   };

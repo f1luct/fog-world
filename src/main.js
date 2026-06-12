@@ -69,10 +69,9 @@ const app = {
   worldWarmed: false,
   lastNavMode: "drift",
   // 用户已经发现了什么:只教没试过的,只在安静时开口。
-  guide: { wiped: false, breathed: false, palmTried: false, walked: false, puffed: false },
+  guide: { wiped: false, breathed: false, palmTried: false, walked: false, puffed: false, stepped: false },
   breathSessionPeak: 0,
   thinPalmHintAt: -100,
-  nextCarPassAt: Infinity,
   hintHideTimer: null,
   hintSwapTimer: null,
   whisperTimer: null,
@@ -157,11 +156,11 @@ function whisper(text, holdSeconds = 3.6) {
 
 const ENCOUNTER_LINES = {
   lamp: "路灯把雨照成一圈细针",
-  puddle: "你踩碎了一汪倒影",
-  car: "一辆车驶过,没有人看你",
-  cat: "站台下有只猫,它也在看雨",
+  arch: "断拱下面,雨声变了形",
+  lantern: "一盏灯笼绕过你,往街深处去了",
   vending: "贩卖机为没有人亮着",
   breath: "你的白气在雨里散开",
+  firstStep: "水面替你数着脚步",
 };
 
 function noteEncounter(kind, time, force = false) {
@@ -263,12 +262,18 @@ function enterWorld() {
   app.lastNavMode = "drift";
   app.worldEnteredAt = performance.now() / 1000;
   intent.settle();
-  app.nextCarPassAt = app.worldEnteredAt + 19.5; // 剧场拍:第一辆车准点经过
   if (!app.worldEntered) {
     app.worldEntered = true;
     app.hintTimers.push(setTimeout(() => {
-      showHint("你在窗外了——雨没有想象的那么冷。", 6.5);
+      showHint("你在窗外了——夜原来积着一层水。", 6.5);
     }, 2200));
+    // 剧场拍:一盏灯笼准点从你面前掠过。
+    app.hintTimers.push(setTimeout(() => {
+      world.summonLanternPass();
+    }, 19500));
+    app.hintTimers.push(setTimeout(() => {
+      noteEncounter("lantern", performance.now() / 1000);
+    }, 22000));
     app.hintTimers.push(setTimeout(() => {
       showHint(
         `${KEYCAP("拖动")} 环顾 &nbsp;·&nbsp; ` +
@@ -374,7 +379,6 @@ if (actJump === "window" || actJump === "world") {
     world.beginArrival();
     app.worldEntered = true;
     app.worldEnteredAt = performance.now() / 1000;
-    app.nextCarPassAt = app.worldEnteredAt + 19.5;
   } else {
     enterWindow({ firstTime: false });
   }
@@ -396,9 +400,8 @@ window.fogDev = {
   surface: () => {
     if (app.state === "world") startReturn();
   },
-  carPass: () => {
-    world.summonCarPass();
-    audio.carPass(8);
+  lantern: () => {
+    world.summonLanternPass();
   },
   freeze: (p = null) => {
     app.crossingFreeze = p;
@@ -434,6 +437,7 @@ function applyQuality() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.ratios[quality.level]));
   renderer.setSize(viewWidth, viewHeight, false);
   world.setRainDensity(quality.rain[quality.level]);
+  world.setQuality(quality.level); // 水镜倒影分辨率跟着降
   const ratio = renderer.getPixelRatio();
   // 雾场跟 CSS 尺寸走,不动它——动了擦痕会被清掉。
   world.resize(viewWidth, viewHeight, ratio);
@@ -538,7 +542,6 @@ function tick(nowMs) {
   // —— 声音的持续层 ——
   let lampProx = 0;
   let vendingProx = 0;
-  let catProx = 0;
   if (app.state === "world") {
     const nav = world.nav;
     for (let i = 0; i < 8; i++) {
@@ -548,14 +551,12 @@ function tick(nowMs) {
       lampProx = Math.max(lampProx, 1 - Math.min(d / 7, 1));
     }
     vendingProx = 1 - Math.min(Math.hypot(nav.x - 3.4, nav.z + CONFIG.world.streetLength - 8) / 9, 1);
-    catProx = 1 - Math.min(Math.hypot(nav.x + 2.7, nav.z + 48.3) / 5, 1);
   }
   audio.update(dt, {
     breath: breathEnv,
     palmCharge: onGlass && signals.palm.active ? signals.palm.charge : 0,
     lampProx,
     vendingProx,
-    catProx,
   });
 
   // —— 各幕 ——
@@ -613,21 +614,19 @@ function tick(nowMs) {
         }
       }
 
-      // 过路车的钟。
-      if (time > app.nextCarPassAt) {
-        app.nextCarPassAt = time +
-          CONFIG.world.carPassMinGap +
-          Math.random() * (CONFIG.world.carPassMaxGap - CONFIG.world.carPassMinGap);
-        world.summonCarPass();
-        audio.carPass(8);
-      }
-
       // 邂逅。
       for (const touch of world.consumeTouchEvents()) {
-        if (touch.kind === "puddle") audio.puddleSplash();
+        if (touch.kind === "step") {
+          audio.stepSplash(touch.intensity ?? 0.5);
+          if (!app.guide.stepped) {
+            app.guide.stepped = true;
+            noteEncounter("firstStep", time);
+          }
+          continue;
+        }
         if (touch.kind === "vending") audio.vendingChime();
         if (touch.kind === "end") {
-          showHint("街到头了。雨还在下。", 6);
+          showHint("水到尽头了。月亮还在。", 6);
           continue;
         }
         noteEncounter(touch.kind, time);

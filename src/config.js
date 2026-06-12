@@ -73,8 +73,6 @@ export const CONFIG = {
       blendIn: 0.4,
       blendOut: 3.5,
     },
-    carPassMinGap: 22,    // 过路车最小间隔（秒）
-    carPassMaxGap: 46,
   },
 
   audio: {
