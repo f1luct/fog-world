@@ -1,0 +1,338 @@
+:root {
+  /* 冬夜配色：冷蓝的夜里透一点路灯的暖。 */
+  --ink: rgba(244, 240, 232, 0.92);
+  --ink-soft: rgba(244, 240, 232, 0.6);
+  --ink-faint: rgba(244, 240, 232, 0.38);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #05070d;
+  overflow: hidden;
+  font-family: Georgia, "Songti SC", "SimSun", serif;
+  color: var(--ink);
+}
+
+#glass-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.veil {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1.4rem;
+  text-align: center;
+  /* 标题浮在活着的雾玻璃上：指尖落下就能擦，begin 之前夜已经开始了。 */
+  background: radial-gradient(
+    ellipse at 50% 36%,
+    rgba(5, 7, 13, 0) 0%,
+    rgba(5, 7, 13, 0.14) 58%,
+    rgba(5, 7, 13, 0.55) 100%
+  );
+  transition: opacity 1.4s ease, visibility 1.4s;
+  z-index: 10;
+  padding: 24vh 2rem 6vh;
+  pointer-events: none;
+}
+
+.veil button,
+.veil .linklike {
+  pointer-events: auto;
+}
+
+.veil.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.veil h1 {
+  font-size: clamp(1.9rem, 4.6vw, 3.1rem);
+  font-weight: 200;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+  line-height: 1.2;
+  margin: 0 0 0.6rem;
+  /* 标题和玻璃同一个呼吸钟。 */
+  animation: title-breath 10s ease-in-out infinite;
+  text-shadow: 0 0 26px rgba(255, 196, 130, 0.14);
+}
+
+@keyframes title-breath {
+  0%, 100% { opacity: 0.74; }
+  50% { opacity: 1; }
+}
+
+.veil .thesis {
+  font-style: italic;
+  font-size: clamp(0.8rem, 1.5vw, 0.95rem);
+  letter-spacing: 0.3em;
+  line-height: 2.2;
+  color: var(--ink-faint);
+  opacity: 0.66;
+  margin: 0 0 6vh;
+}
+
+.veil .micro {
+  margin-top: auto;
+  font-size: 0.74rem;
+  letter-spacing: 0.2em;
+  color: var(--ink-faint);
+  opacity: 0.55;
+  font-style: italic;
+}
+
+.veil .linklike {
+  appearance: none;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-indent: 0;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.35em;
+  text-decoration-color: rgba(244, 240, 232, 0.3);
+  transition: text-decoration-color 0.5s ease, opacity 0.5s ease;
+}
+
+.veil .linklike:hover {
+  text-decoration-color: rgba(244, 240, 232, 0.8);
+  background: none;
+  border: none;
+  transform: none;
+}
+
+.veil button {
+  appearance: none;
+  background: transparent;
+  border: 1px solid rgba(244, 240, 232, 0.3);
+  border-radius: 999px;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.98rem;
+  letter-spacing: 0.6em;
+  text-indent: 0.6em;
+  padding: 0.95em 3.2em;
+  cursor: pointer;
+  transition: border-color 0.6s ease, background 0.6s ease,
+    box-shadow 0.6s ease, transform 0.6s ease;
+}
+
+.veil button:hover {
+  border-color: rgba(244, 240, 232, 0.65);
+  background: rgba(244, 240, 232, 0.05);
+  box-shadow: 0 0 24px rgba(255, 196, 130, 0.14);
+  transform: translateY(-1px);
+}
+
+#mic-note {
+  min-height: 1.4em;
+}
+
+#hint {
+  position: fixed;
+  left: 50%;
+  bottom: 18vh;
+  transform: translateX(-50%);
+  font-style: italic;
+  font-size: clamp(1.05rem, 2.3vw, 1.32rem);
+  letter-spacing: 0.22em;
+  color: rgba(250, 248, 244, 0.96);
+  text-align: center;
+  max-width: 80vw;
+  opacity: 0;
+  transition: opacity 1.1s ease;
+  pointer-events: none;
+  z-index: 5;
+  text-shadow:
+    0 0 5px rgba(8, 10, 16, 0.7),
+    0 1px 12px rgba(5, 7, 12, 0.9),
+    0 0 30px rgba(4, 6, 10, 0.95);
+}
+
+/* 到了窗外，文字带上路灯的暖光。 */
+body[data-state="world"] #hint {
+  color: rgba(255, 251, 243, 0.98);
+  text-shadow:
+    0 0 1px rgba(10, 8, 4, 0.95),
+    0 1px 2px rgba(10, 8, 4, 0.95),
+    0 0 4px rgba(12, 9, 4, 0.65),
+    0 0 8px rgba(255, 202, 140, 0.6),
+    0 0 16px rgba(255, 188, 120, 0.34),
+    0 0 32px rgba(255, 176, 100, 0.28);
+}
+
+body[data-state="world"] #encounter {
+  color: rgba(255, 250, 242, 0.96);
+  text-shadow:
+    0 0 1px rgba(10, 8, 4, 0.9),
+    0 1px 2px rgba(10, 8, 4, 0.9),
+    0 0 4px rgba(12, 9, 4, 0.55),
+    0 0 10px rgba(255, 200, 138, 0.55),
+    0 0 22px rgba(255, 186, 116, 0.28);
+}
+
+#hint.visible {
+  opacity: 1;
+}
+
+#mode-whisper {
+  position: fixed;
+  left: 50%;
+  top: 14vh;
+  transform: translateX(-50%);
+  font-style: italic;
+  font-size: 0.95rem;
+  letter-spacing: 0.34em;
+  color: var(--ink-faint);
+  text-align: center;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 1.1s ease;
+  pointer-events: none;
+  z-index: 5;
+  text-shadow: 0 1px 14px rgba(5, 7, 12, 0.8);
+}
+
+#mode-whisper.visible {
+  opacity: 0.78;
+}
+
+/* 邂逅字幕：最轻的声音——身体刚碰到什么，夜替它说一句。 */
+#encounter {
+  position: fixed;
+  left: 50%;
+  top: 18vh;
+  transform: translateX(-50%);
+  font-style: italic;
+  font-size: 1.18rem;
+  letter-spacing: 0.28em;
+  color: rgba(252, 247, 238, 0.96);
+  text-align: center;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 2.6s ease;
+  pointer-events: none;
+  z-index: 4;
+  text-shadow: 0 0 10px rgba(255, 200, 138, 0.4), 0 1px 14px rgba(5, 7, 12, 0.85);
+}
+
+#encounter.swap {
+  transition: opacity 0.55s ease;
+}
+
+#encounter.visible {
+  opacity: 0.86;
+  transition: opacity 1.1s ease;
+}
+
+#hint kbd {
+  display: inline-block;
+  font-family: ui-monospace, Menlo, monospace;
+  font-style: normal;
+  font-size: 0.8em;
+  line-height: 1;
+  padding: 0.24em 0.55em 0.3em;
+  margin: 0 0.22em;
+  border: 1px solid rgba(255, 210, 156, 0.5);
+  border-bottom-width: 2px;
+  border-radius: 7px;
+  background: rgba(255, 200, 140, 0.08);
+  box-shadow:
+    0 0 10px rgba(255, 196, 130, 0.22),
+    inset 0 0 6px rgba(255, 196, 130, 0.12);
+  letter-spacing: 0.08em;
+  text-indent: 0;
+  vertical-align: 0.05em;
+}
+
+body[data-state="world"] #mode-whisper {
+  color: rgba(253, 248, 240, 0.95);
+  text-shadow:
+    0 0 1px rgba(10, 8, 4, 0.92),
+    0 1px 2px rgba(10, 8, 4, 0.92),
+    0 0 4px rgba(12, 9, 4, 0.55),
+    0 0 7px rgba(255, 202, 140, 0.55),
+    0 0 16px rgba(255, 186, 116, 0.26);
+}
+
+.corner {
+  position: fixed;
+  z-index: 6;
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--ink-faint);
+  font-family: inherit;
+  font-size: 0.76rem;
+  letter-spacing: 0.3em;
+  cursor: pointer;
+  padding: 0.8em 1em;
+  transition: color 0.5s ease, opacity 1.2s ease;
+}
+
+.corner:hover {
+  color: var(--ink);
+}
+
+#sound-toggle {
+  right: 1.2rem;
+  top: 1rem;
+}
+
+#car-return {
+  left: 1.2rem;
+  top: 1rem;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#car-return.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#debug {
+  position: fixed;
+  left: 0.8rem;
+  bottom: 0.8rem;
+  z-index: 9;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(255, 220, 170, 0.8);
+  white-space: pre-wrap;
+  display: none;
+  pointer-events: none;
+}
+
+#debug.visible {
+  display: block;
+}
+
+body[data-state="crossing"] .corner,
+body[data-state="returning"] .corner {
+  opacity: 0;
+  pointer-events: none;
+}

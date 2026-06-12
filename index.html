@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>呵气 · 窗外 — breathe on the glass</title>
+    <meta name="description" content="冬夜的车窗结满雾气。擦开一道，看见窗外的雨。呵一口气，把手掌贴上去——你就到外面了。" />
+    <link rel="stylesheet" href="src/styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body data-state="prelude">
+    <canvas id="glass-canvas"></canvas>
+
+    <section id="prelude" class="veil">
+      <h1>呵气 · 窗外</h1>
+      <p class="thesis">玻璃有两侧 ——<br />你就要见到另一侧了</p>
+      <button id="begin-mic">开 始</button>
+      <p id="mic-note" class="micro">你的呼吸只留在这里&ensp;·&ensp;<button id="begin-quiet" class="linklike">或保持安静</button></p>
+    </section>
+
+    <div id="hint"></div>
+    <div id="mode-whisper"></div>
+    <div id="encounter"></div>
+    <button id="sound-toggle" class="corner">有 声</button>
+    <button id="car-return" class="corner">回到车里</button>
+    <div id="debug"></div>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
