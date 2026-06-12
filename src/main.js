@@ -403,13 +403,42 @@ window.fogDev = {
   freeze: (p = null) => {
     app.crossingFreeze = p;
   },
+  tp: (x, z, yaw = null, pitch = null) => {
+    world.nav.x = x;
+    world.nav.z = z;
+    if (yaw !== null) world.nav.yaw = yaw;
+    if (pitch !== null) world.nav.pitch = pitch;
+    // 落地后站定 30 秒,漂移不要把取景推走。
+    world.nav.lastKeyAt = performance.now() / 1000 + 30;
+    world.nav.velX = 0;
+    world.nav.velZ = 0;
+  },
   state: () => app.state,
+  world,
 };
 
 // ---------------------------------------------------------------- 主循环
 
 let viewWidth = 1;
 let viewHeight = 1;
+
+// 帧率看门狗:扛不住就降渲染分辨率和雨量,只降不升(避免来回抖)。
+const quality = {
+  level: 2,
+  lastDropAt: 0,
+  ratios: [1.0, 1.25, tier === "full" ? 1.6 : 1.25],
+  rain: [0.35, 0.65, 1],
+};
+
+function applyQuality() {
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.ratios[quality.level]));
+  renderer.setSize(viewWidth, viewHeight, false);
+  world.setRainDensity(quality.rain[quality.level]);
+  const ratio = renderer.getPixelRatio();
+  // 雾场跟 CSS 尺寸走,不动它——动了擦痕会被清掉。
+  world.resize(viewWidth, viewHeight, ratio);
+  windowTarget.setSize(Math.round(viewWidth * ratio), Math.round(viewHeight * ratio));
+}
 
 function resize() {
   const width = canvas.clientWidth || window.innerWidth;
@@ -439,6 +468,11 @@ function tick(nowMs) {
   app.fps += ((dt > 0 ? 1 / dt : 60) - app.fps) * 0.05;
 
   resize();
+  if (time > 6 && app.fps < 42 && quality.level > 0 && time - quality.lastDropAt > 5) {
+    quality.level -= 1;
+    quality.lastDropAt = time;
+    applyQuality();
+  }
   const breathCycle = 0.5 + 0.5 * Math.sin((Math.PI * 2 * time) / CONFIG.breathPeriod - Math.PI / 2);
   const breathEnv = breath.frame(dt, time);
   const onGlass = app.state === "prelude" || app.state === "window";
