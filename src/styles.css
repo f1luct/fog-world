@@ -57,8 +57,7 @@ body {
   pointer-events: none;
 }
 
-.veil button,
-.veil .linklike {
+.veil button {
   pointer-events: auto;
 }
 
@@ -95,40 +94,6 @@ body {
   margin: 0 0 6vh;
 }
 
-.veil .micro {
-  margin-top: auto;
-  font-size: 0.74rem;
-  letter-spacing: 0.2em;
-  color: var(--ink-faint);
-  opacity: 0.55;
-  font-style: italic;
-}
-
-.veil .linklike {
-  appearance: none;
-  background: none;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  margin: 0;
-  font: inherit;
-  letter-spacing: inherit;
-  text-indent: 0;
-  color: inherit;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 0.35em;
-  text-decoration-color: rgba(244, 240, 232, 0.3);
-  transition: text-decoration-color 0.5s ease, opacity 0.5s ease;
-}
-
-.veil .linklike:hover {
-  text-decoration-color: rgba(244, 240, 232, 0.8);
-  background: none;
-  border: none;
-  transform: none;
-}
-
 .veil button {
   appearance: none;
   background: transparent;
@@ -150,10 +115,6 @@ body {
   background: rgba(244, 240, 232, 0.05);
   box-shadow: 0 0 24px rgba(255, 196, 130, 0.14);
   transform: translateY(-1px);
-}
-
-#mic-note {
-  min-height: 1.4em;
 }
 
 #hint {
@@ -355,12 +316,6 @@ body.touch #hint {
   font-size: clamp(1rem, 4vw, 1.2rem);
   max-width: 88vw;
   bottom: calc(14vh + env(safe-area-inset-bottom, 0px));
-}
-
-/* 「或保持安静」是手机上的主路径,命中区放大到手指尺寸(布局不动)。 */
-body.touch .veil .linklike {
-  padding: 0.9em 1em;
-  margin: -0.9em -1em;
 }
 
 body.touch #mode-whisper {

@@ -37,13 +37,8 @@ export const CONFIG = {
   },
 
   breath: {
-    // 麦克风呵气判定：宽带噪声（频谱平坦）+ 能量超阈值。
-    fftSize: 1024,
-    energyThreshold: 0.06,   // RMS 阈值
-    flatnessThreshold: 0.32, // 谱平坦度阈值（呵气是噪声，说话谐波多、平坦度低）
-    attack: 4.0,   // 检测到呵气后能量包络上升速率
-    release: 1.6,  // 松开后回落速率
-    holdKeyRate: 2.6, // 空格替代呵气时包络的上升速率
+    release: 1.6,     // 松开后包络回落速率
+    holdKeyRate: 2.6, // 按住空格时包络的上升速率
   },
 
   palm: {

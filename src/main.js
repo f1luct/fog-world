@@ -16,9 +16,7 @@ import { createAudio } from "./audio.js";
 const canvas = document.querySelector("#glass-canvas");
 const ui = {
   prelude: document.querySelector("#prelude"),
-  beginMic: document.querySelector("#begin-mic"),
-  beginQuiet: document.querySelector("#begin-quiet"),
-  micNote: document.querySelector("#mic-note"),
+  begin: document.querySelector("#begin"),
   hint: document.querySelector("#hint"),
   modeWhisper: document.querySelector("#mode-whisper"),
   encounter: document.querySelector("#encounter"),
@@ -87,7 +85,6 @@ const MOUTH = { x: 0.5, y: 0.3 }; // 呵气在玻璃上晕开的位置
 
 const app = {
   state: "prelude",
-  micMode: false,
   crossingStart: 0,
   crossingDuration: CONFIG.crossing.duration,
   crossingFocus: { x: 0.5, y: 0.5 },
@@ -253,9 +250,7 @@ function enterWindow({ firstTime = true } = {}) {
       1400,
     ));
     app.hintTimers.push(setTimeout(() => {
-      if (app.micMode) {
-        showHint("准备好了——对着夜呵一口气,再把手掌贴上去。", 9, { key: "breathe" });
-      } else if (isTouch) {
+      if (isTouch) {
         // 手机没有空格:手掌的温度自己会让玻璃起雾。
         showHint("准备好了——把手掌贴在玻璃上,捂一会儿,别松开。", 9, { key: "breathe" });
       } else {
@@ -367,26 +362,7 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("pointerdown", () => audio.resumeIfNeeded());
 
-ui.beginMic.addEventListener("click", async () => {
-  await audio.unlock();
-  keepAwake();
-  try {
-    await breath.enableMic();
-    app.micMode = true;
-  } catch {
-    // 注意触屏没有空格——兜底是掌温;且 prelude 即将淡出,正经的说明
-    // 等进了窗幕再用 hint 讲一遍。
-    const fallbackNote = isTouch
-      ? "麦克风沉默着。掌心的温度会替你呼吸。"
-      : "麦克风沉默着。空格会替你呼吸。";
-    ui.micNote.textContent = fallbackNote;
-    setTimeout(() => showHint(fallbackNote, 6), 6800);
-  }
-  ui.prelude.classList.add("hidden");
-  enterWindow();
-});
-
-ui.beginQuiet.addEventListener("click", async () => {
+ui.begin.addEventListener("click", async () => {
   await audio.unlock();
   keepAwake();
   ui.prelude.classList.add("hidden");
@@ -553,9 +529,9 @@ function tick(nowMs) {
   const breathCycle = 0.5 + 0.5 * Math.sin((Math.PI * 2 * time) / CONFIG.breathPeriod - Math.PI / 2);
   const breathEnv = breath.frame(dt, time);
   const onGlass = app.state === "prelude" || app.state === "window";
-  // 触屏静音模式:没有空格呵气,长按本身就算"雾够厚"——掌温融穿。
+  // 触屏:没有空格呵气,长按本身就算"雾够厚"——掌温融穿。
   // 不在玻璃上时传 null:掌印逻辑整体停摆,长按行走不会被慢充能掐断。
-  const palmAlwaysMelts = isTouch && !app.micMode;
+  const palmAlwaysMelts = isTouch;
   const fogAt = !onGlass ? null : (palmAlwaysMelts ? () => 1 : fog.sample);
   const signals = intent.frame(dt, time, fogAt);
 
@@ -580,7 +556,7 @@ function tick(nowMs) {
     }
 
     // 呵气:雾团供给 + 全玻璃回雾加速(一车厢的湿气)。
-    // 触屏静音模式下,手掌按住的地方被体温焐出雾——代替呵气。
+    // 触屏:手掌按住的地方被体温焐出雾——代替呵气。
     if (palmAlwaysMelts && signals.palm.active) {
       fog.setBreath(signals.palm.x, signals.palm.y, 0.9, 0.24);
     } else {
@@ -608,7 +584,8 @@ function tick(nowMs) {
         signals.palm.charge > 0.18 && time - app.thinPalmHintAt > 14 &&
         app.state === "window") {
       app.thinPalmHintAt = time;
-      showHint("先呵一口气——让雾厚一点。", 5);
+      // 此提示只会在桌面出现(触屏的雾厚门槛恒满足)。
+      showHint(`先按住 ${KEYCAP("空格")} 呵口气——让雾厚一点。`, 5, { html: true });
     }
     if (signals.palm.fired && app.state === "window") {
       startCrossing({ x: signals.palm.x, y: signals.palm.y });
