@@ -86,12 +86,17 @@ export function createBreath(cfg) {
     if (time < state.simulateUntil) {
       target = 1;
       rate = cfg.holdKeyRate;
-    } else if (state.usingMic && analyser) {
-      state.detected = readMic();
-      target = state.detected;
-    } else if (state.keyHeld) {
-      target = 1;
-      rate = cfg.holdKeyRate;
+    } else {
+      // 麦克风与空格不互斥:开了麦克风,按住空格也照样算呼吸——
+      // 否则界面提示空格能呵白气,按下去却毫无反应。
+      if (state.usingMic && analyser) {
+        state.detected = readMic();
+        target = state.detected;
+      }
+      if (state.keyHeld && target < 1) {
+        target = 1;
+        rate = cfg.holdKeyRate;
+      }
     }
 
     if (target > state.envelope) {

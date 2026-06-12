@@ -11,7 +11,7 @@
 零构建，静态文件直接跑：
 
 ```sh
-python -m http.server 8077 --directory .
+python serve.py 8077   # 自带 no-store——浏览器对 ES modules 的启发式缓存会坑死人
 # 打开 http://localhost:8077/
 ```
 

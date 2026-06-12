@@ -28,7 +28,34 @@ const ui = {
 };
 
 const tier = detectTier();
-const isTouch = detectTouch();
+
+// 触屏判定分两层真相:
+// · CSS 尺寸(body.touch 初值)用宽松的能力检测——错了只是按钮大一号;
+// · 玩法与文案(isTouch)只信"真实发生过的触摸"——老 WebView 的媒体查询
+//   会撒谎(微信 X5 内核 pointer:coarse 恒 false),但手指落屏不会。
+//   玩家点「开始」那一下就完成确认,远早于任何提示出现;
+//   触屏笔记本用鼠标玩也不会被误判而绕过呵气门槛。
+let isTouch = queryFlag("touch") !== null;
+
+function markTouch() {
+  isTouch = true;
+  document.body.classList.add("touch");
+}
+if (isTouch || detectTouch()) document.body.classList.add("touch");
+
+window.addEventListener(
+  "pointerdown",
+  (event) => {
+    if (event.pointerType === "touch") markTouch();
+  },
+  { capture: true, passive: true },
+);
+// 个别老 WebView 的 pointerType 是空字符串,touchstart 不会骗人。
+window.addEventListener("touchstart", () => markTouch(), {
+  capture: true,
+  passive: true,
+  once: true,
+});
 
 const renderer = new THREE.WebGLRenderer({
   canvas,

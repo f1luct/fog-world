@@ -84,11 +84,19 @@ export const CONFIG = {
   },
 };
 
-// 触屏识别:能力检测而非 UA 猜测——主指针是"粗"的就是手指。
-// ?touch 强制开启,方便桌面调试。
+// 触屏识别:能力检测而非 UA 猜测,而且宁可误报不可漏报——
+// 误判成触屏只是提示文案换了说法(空格和 WASD 照常工作),
+// 漏判却会让手机玩家面对一条按不出来的空格提示。
+// ?touch 强制开启,方便桌面调试。启动后 main 还会用真实触摸事件兜底纠正。
 export function detectTouch() {
   if (new URLSearchParams(window.location.search).has("touch")) return true;
-  return Boolean(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+  const mm = (q) => Boolean(window.matchMedia && window.matchMedia(q).matches);
+  return (
+    mm("(pointer: coarse)") ||
+    mm("(any-pointer: coarse)") ||
+    (navigator.maxTouchPoints || 0) > 0 ||
+    "ontouchstart" in window
+  );
 }
 
 export function detectTier() {

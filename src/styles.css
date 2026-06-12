@@ -343,42 +343,42 @@ body[data-state="returning"] .corner {
   pointer-events: none;
 }
 
-/* 触屏:手指点得到的尺寸。 */
-@media (pointer: coarse) {
-  .corner {
-    font-size: 0.88rem;
-    padding: 1.1em 1.2em;
-  }
+/* 触屏:手指点得到的尺寸。
+   挂在 body.touch 上由 JS 统一判定(媒体查询 + 真实触摸事件兜底),
+   不再单独依赖 CSS 媒体查询——某些 WebView 的 pointer:coarse 不可信。 */
+body.touch .corner {
+  font-size: 0.88rem;
+  padding: 1.1em 1.2em;
+}
 
-  #hint {
-    font-size: clamp(1rem, 4vw, 1.2rem);
-    max-width: 88vw;
-    bottom: calc(14vh + env(safe-area-inset-bottom, 0px));
-  }
+body.touch #hint {
+  font-size: clamp(1rem, 4vw, 1.2rem);
+  max-width: 88vw;
+  bottom: calc(14vh + env(safe-area-inset-bottom, 0px));
+}
 
-  /* 「或保持安静」是手机上的主路径,命中区放大到手指尺寸(布局不动)。 */
-  .veil .linklike {
-    padding: 0.9em 1em;
-    margin: -0.9em -1em;
-  }
+/* 「或保持安静」是手机上的主路径,命中区放大到手指尺寸(布局不动)。 */
+body.touch .veil .linklike {
+  padding: 0.9em 1em;
+  margin: -0.9em -1em;
+}
 
-  #mode-whisper {
-    font-size: 0.88rem;
-    white-space: normal;
-    max-width: 86vw;
-  }
+body.touch #mode-whisper {
+  font-size: 0.88rem;
+  white-space: normal;
+  max-width: 86vw;
+}
 
-  #encounter {
-    font-size: 1.05rem;
-    white-space: normal;
-    max-width: 86vw;
-  }
+body.touch #encounter {
+  font-size: 1.05rem;
+  white-space: normal;
+  max-width: 86vw;
+}
 
-  .veil button {
-    padding: 1.05em 3.4em;
-  }
+body.touch .veil button {
+  padding: 1.05em 3.4em;
+}
 
-  .veil {
-    padding-top: 18vh;
-  }
+body.touch .veil {
+  padding-top: 18vh;
 }
