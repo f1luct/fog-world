@@ -2,7 +2,7 @@
 // 一个呼吸钟、一个意图层,喂给每一幕。
 
 import * as THREE from "three";
-import { CONFIG, detectTier, queryFlag } from "./config.js";
+import { CONFIG, detectTier, detectTouch, queryFlag } from "./config.js";
 import { createFogField, createGrainTexture } from "./fogfield.js";
 import { createPalmPrint } from "./palmprint.js";
 import { createIntent } from "./intent.js";
@@ -28,6 +28,7 @@ const ui = {
 };
 
 const tier = detectTier();
+const isTouch = detectTouch();
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -214,6 +215,7 @@ function setState(next) {
 function enterWindow({ firstTime = true } = {}) {
   setState("window");
   world.setView("car");
+  intent.resetPalm(); // 标题页玩雾留下的冷却不带进来
   if (!app.worldWarmed) {
     app.worldWarmed = true;
     setTimeout(() => world.warmup(), 900);
@@ -226,6 +228,9 @@ function enterWindow({ firstTime = true } = {}) {
     app.hintTimers.push(setTimeout(() => {
       if (app.micMode) {
         showHint("准备好了——对着夜呵一口气,再把手掌贴上去。", 9, { key: "breathe" });
+      } else if (isTouch) {
+        // 手机没有空格:手掌的温度自己会让玻璃起雾。
+        showHint("准备好了——把手掌贴在玻璃上,捂一会儿,别松开。", 9, { key: "breathe" });
       } else {
         showHint(
           `准备好了——按住 ${KEYCAP("空格")} 呵气,再把手掌贴上去。`,
@@ -275,13 +280,21 @@ function enterWorld() {
       noteEncounter("lantern", performance.now() / 1000);
     }, 22000));
     app.hintTimers.push(setTimeout(() => {
-      showHint(
-        `${KEYCAP("拖动")} 环顾 &nbsp;·&nbsp; ` +
-        `${KEYCAP("W")}${KEYCAP("A")}${KEYCAP("S")}${KEYCAP("D")} 在雨里走 &nbsp;·&nbsp; ` +
-        `${KEYCAP("空格")} 呵一口白气`,
-        9,
-        { html: true },
-      );
+      if (isTouch) {
+        showHint(
+          `${KEYCAP("拖动")} 环顾 &nbsp;·&nbsp; ${KEYCAP("长按")} 往前走`,
+          9,
+          { html: true },
+        );
+      } else {
+        showHint(
+          `${KEYCAP("拖动")} 环顾 &nbsp;·&nbsp; ` +
+          `${KEYCAP("W")}${KEYCAP("A")}${KEYCAP("S")}${KEYCAP("D")} 在雨里走 &nbsp;·&nbsp; ` +
+          `${KEYCAP("空格")} 呵一口白气`,
+          9,
+          { html: true },
+        );
+      }
     }, 9200));
     app.hintTimers.push(setTimeout(() => {
       if (!app.guide.walked) {
@@ -307,13 +320,40 @@ function startReturn() {
 
 // ---------------------------------------------------------------- 启动接线
 
+// 屏幕常亮:这个游戏鼓励你什么都不按,别让系统在漂移途中把屏幕熄了。
+let wakeLock = null;
+let wantWakeLock = false;
+async function keepAwake() {
+  wantWakeLock = true;
+  try {
+    wakeLock = await navigator.wakeLock?.request("screen");
+  } catch {
+    // 低电量模式等会拒绝,沉默接受。
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    audio.resumeIfNeeded();
+    if (wantWakeLock) keepAwake();
+  }
+});
+window.addEventListener("pointerdown", () => audio.resumeIfNeeded());
+
 ui.beginMic.addEventListener("click", async () => {
   await audio.unlock();
+  keepAwake();
   try {
     await breath.enableMic();
     app.micMode = true;
   } catch {
-    ui.micNote.textContent = "麦克风沉默着。空格会替你呼吸。";
+    // 注意触屏没有空格——兜底是掌温;且 prelude 即将淡出,正经的说明
+    // 等进了窗幕再用 hint 讲一遍。
+    const fallbackNote = isTouch
+      ? "麦克风沉默着。掌心的温度会替你呼吸。"
+      : "麦克风沉默着。空格会替你呼吸。";
+    ui.micNote.textContent = fallbackNote;
+    setTimeout(() => showHint(fallbackNote, 6), 6800);
   }
   ui.prelude.classList.add("hidden");
   enterWindow();
@@ -321,6 +361,7 @@ ui.beginMic.addEventListener("click", async () => {
 
 ui.beginQuiet.addEventListener("click", async () => {
   await audio.unlock();
+  keepAwake();
   ui.prelude.classList.add("hidden");
   enterWindow();
 });
@@ -426,8 +467,9 @@ let viewWidth = 1;
 let viewHeight = 1;
 
 // 帧率看门狗:扛不住就降渲染分辨率和雨量,只降不升(避免来回抖)。
+// 手机直接从中档起步——反射 + 高 DPR 全开它撑不住。
 const quality = {
-  level: 2,
+  level: tier === "lite" ? 1 : 2,
   lastDropAt: 0,
   ratios: [1.0, 1.25, tier === "full" ? 1.6 : 1.25],
   rain: [0.35, 0.65, 1],
@@ -461,6 +503,10 @@ function resize() {
 
 window.addEventListener("resize", resize);
 resize();
+applyQuality();
+
+// 长按是核心交互:别让浏览器弹出长按菜单/选中文本。
+canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
 let lastTime = performance.now() / 1000;
 
@@ -480,7 +526,11 @@ function tick(nowMs) {
   const breathCycle = 0.5 + 0.5 * Math.sin((Math.PI * 2 * time) / CONFIG.breathPeriod - Math.PI / 2);
   const breathEnv = breath.frame(dt, time);
   const onGlass = app.state === "prelude" || app.state === "window";
-  const signals = intent.frame(dt, time, onGlass ? fog.sample : () => 0);
+  // 触屏静音模式:没有空格呵气,长按本身就算"雾够厚"——掌温融穿。
+  // 不在玻璃上时传 null:掌印逻辑整体停摆,长按行走不会被慢充能掐断。
+  const palmAlwaysMelts = isTouch && !app.micMode;
+  const fogAt = !onGlass ? null : (palmAlwaysMelts ? () => 1 : fog.sample);
+  const signals = intent.frame(dt, time, fogAt);
 
   // —— 玻璃上的事:擦拭、呵气、凝珠 ——
   if (onGlass) {
@@ -503,7 +553,12 @@ function tick(nowMs) {
     }
 
     // 呵气:雾团供给 + 全玻璃回雾加速(一车厢的湿气)。
-    fog.setBreath(MOUTH.x, MOUTH.y, breathEnv * CONFIG.fog.breathRate);
+    // 触屏静音模式下,手掌按住的地方被体温焐出雾——代替呵气。
+    if (palmAlwaysMelts && signals.palm.active) {
+      fog.setBreath(signals.palm.x, signals.palm.y, 0.9, 0.24);
+    } else {
+      fog.setBreath(MOUTH.x, MOUTH.y, breathEnv * CONFIG.fog.breathRate);
+    }
     if (breathEnv > 0.4) {
       app.breathSessionPeak = Math.max(app.breathSessionPeak, breathEnv);
       if (!app.guide.breathed) {
@@ -598,7 +653,14 @@ function tick(nowMs) {
       break;
     }
     case "world": {
-      world.update(dt, time, breathCycle, navFrame(), signals.drag);
+      const nav = navFrame();
+      // 触屏:长按不动 = 朝视线方向走。
+      if (isTouch && signals.holding) {
+        nav.z = 1;
+        nav.active = true;
+        app.guide.walked = true;
+      }
+      world.update(dt, time, breathCycle, nav, signals.drag);
       world.render(true);
 
       // 呵气:呼出一团白。
@@ -667,6 +729,8 @@ function tick(nowMs) {
         state: app.state,
         fps: Math.round(app.fps),
         tier,
+        touch: isTouch,
+        quality: quality.level,
         drops: droplets.count,
         fogAtMouth: Number(fog.sample(0.5, 0.3).toFixed(2)),
         ...intent.debug,

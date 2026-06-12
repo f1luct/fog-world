@@ -43,8 +43,14 @@ export function createIntent(canvas, cfg) {
     }
     const uv = uvFromEvent(event);
     pointers.set(event.pointerId, uv);
-    state.hold = { x: uv.x, y: uv.y, startedAt: state.time, pointerId: event.pointerId };
-    state.dragLast = { id: event.pointerId, x: uv.x, y: uv.y };
+    // 已有手指在按贴/拖动时,后来的手指(常是掌缘误触)不抢走 hold——
+    // 它只能当普通的擦拭笔尖用。
+    const holderAlive = state.hold && pointers.has(state.hold.pointerId) &&
+      state.hold.pointerId !== event.pointerId;
+    if (!holderAlive) {
+      state.hold = { x: uv.x, y: uv.y, startedAt: state.time, pointerId: event.pointerId };
+      state.dragLast = { id: event.pointerId, x: uv.x, y: uv.y };
+    }
     state.lastContactAt = state.time;
     state.focusX = uv.x;
     state.focusY = uv.y;
@@ -82,11 +88,13 @@ export function createIntent(canvas, cfg) {
       state.lastWipeAt = state.time;
     }
 
-    if (state.hold) {
+    if (state.hold && state.hold.pointerId === event.pointerId) {
       const drift = Math.hypot(uv.x - state.hold.x, uv.y - state.hold.y);
       if (drift > cfg.pointer.holdMoveCancel) {
-        // 手动了——这不是按贴，是擦拭。掌印（若已盖）留在原处慢慢回雾。
-        state.hold = null;
+        // 手动了——这不是按贴,是擦拭/拖动。但不要杀死 hold:
+        // 重新锚定到当前位置,手指再次停稳后掌印/行走自动续上。
+        // (旧版直接置 null,指腹一滚就静默死锁,必须抬手重按。)
+        state.hold = { x: uv.x, y: uv.y, startedAt: state.time, pointerId: event.pointerId };
         state.palm.active = false;
         state.palm.planted = false;
       }
@@ -95,14 +103,16 @@ export function createIntent(canvas, cfg) {
 
   function handlePointerEnd(event) {
     pointers.delete(event.pointerId);
+    // 只有"按贴的那根手指"抬起才重置手掌——手机上掌缘误触的
+    // 第二根手指来了又走,不能把正在充能的掌印一起带走。
     if (state.hold && state.hold.pointerId === event.pointerId) {
       state.hold = null;
+      state.palm.active = false;
+      state.palm.planted = false;
     }
     if (state.dragLast && state.dragLast.id === event.pointerId) {
       state.dragLast = null;
     }
-    state.palm.active = false;
-    state.palm.planted = false;
   }
 
   canvas.addEventListener("pointerdown", handlePointerDown);
@@ -113,14 +123,17 @@ export function createIntent(canvas, cfg) {
 
   // 每帧由 main 调用。fogAt(x, y) 取按点附近的雾密度（CPU 近似格网），
   // 决定手掌是真的在融玻璃，还是只在干玻璃上留个印子。
+  // fogAt 传 null = 此刻没有玻璃(世界幕):掌印整套逻辑停摆,
+  // hold 只用来供 holding(长按行走)读取——绝不能被慢充能 fire 掉。
   function frame(dt, time, fogAt) {
     state.time = time;
     const palm = state.palm;
     palm.fired = false;
     palm.justPlanted = false;
+    const palmEnabled = typeof fogAt === "function";
     const coolingDown = time < palm.cooldownUntil;
 
-    if (state.hold && !coolingDown &&
+    if (palmEnabled && state.hold && !coolingDown &&
         time - state.hold.startedAt > cfg.pointer.holdPalmDelay) {
       palm.x = state.hold.x;
       palm.y = state.hold.y;
@@ -143,7 +156,7 @@ export function createIntent(canvas, cfg) {
         palm.cooldownUntil = time + cfg.palm.cooldown;
         state.hold = null;
       }
-    } else if (!state.hold) {
+    } else if (!state.hold || !palmEnabled) {
       palm.active = false;
       palm.charge = Math.max(palm.charge - cfg.palm.releaseRate * dt, 0);
     }
@@ -163,6 +176,8 @@ export function createIntent(canvas, cfg) {
       presence: Math.max(0, 1 - (time - state.lastContactAt) / 3.5),
       palm: { ...palm },
       wiping: time - state.lastWipeAt < 0.15,
+      // 按住不动(超过认定延迟):触屏世界里的"往前走"。
+      holding: state.hold !== null && time - state.hold.startedAt > 0.25,
     };
   }
 
@@ -170,9 +185,16 @@ export function createIntent(canvas, cfg) {
     state.energy *= 0.3;
   }
 
+  // 标题页玩雾可能留下掌印冷却,进窗幕时清掉——"开始就贴掌"必须有响应。
+  function resetPalm() {
+    state.palm.cooldownUntil = -Infinity;
+    state.palm.charge = 0;
+  }
+
   return {
     frame,
     settle,
+    resetPalm,
     get debug() {
       return {
         palmCharge: Number(state.palm.charge.toFixed(3)),

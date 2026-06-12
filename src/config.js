@@ -84,12 +84,21 @@ export const CONFIG = {
   },
 };
 
+// 触屏识别:能力检测而非 UA 猜测——主指针是"粗"的就是手指。
+// ?touch 强制开启,方便桌面调试。
+export function detectTouch() {
+  if (new URLSearchParams(window.location.search).has("touch")) return true;
+  return Boolean(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+}
+
 export function detectTier() {
   const params = new URLSearchParams(window.location.search);
   if (params.has("lite")) return "lite";
   const ua = navigator.userAgent || "";
   const mobile = navigator.userAgentData?.mobile || /Mobi|Android|iPhone|iPad/.test(ua);
-  return mobile ? "lite" : "full";
+  // iPadOS 13+ 默认伪装成 Mac 桌面 UA,但真 Mac 没有多点触控。
+  const ipadInDisguise = /Mac/.test(ua) && (navigator.maxTouchPoints || 0) > 1;
+  return (mobile || ipadInDisguise) ? "lite" : "full";
 }
 
 export function queryFlag(name) {

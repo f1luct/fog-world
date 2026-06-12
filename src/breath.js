@@ -19,6 +19,11 @@ export function createBreath(cfg) {
   let freqData = null;
 
   async function enableMic() {
+    // AudioContext 必须在用户手势内同步建好并立刻 resume——
+    // iOS 上等权限弹窗回来手势已过期,那时再 resume 可能永远 pending。
+    // resume 不 await:就算暂时 suspended,授权采集开始后 WebKit 会放行。
+    audioContext = audioContext || new AudioContext();
+    audioContext.resume().catch(() => {});
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: false,
@@ -26,8 +31,6 @@ export function createBreath(cfg) {
         autoGainControl: false,
       },
     });
-    audioContext = new AudioContext();
-    if (audioContext.state === "suspended") await audioContext.resume();
     const source = audioContext.createMediaStreamSource(stream);
     analyser = audioContext.createAnalyser();
     analyser.fftSize = cfg.fftSize;

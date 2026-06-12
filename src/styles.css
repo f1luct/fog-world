@@ -17,6 +17,12 @@ body {
   overflow: hidden;
   font-family: Georgia, "Songti SC", "SimSun", serif;
   color: var(--ink);
+  /* 触屏:长按是核心交互,禁掉下拉刷新/双击缩放/长按选中与高亮。 */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 #glass-canvas {
@@ -297,13 +303,13 @@ body[data-state="world"] #mode-whisper {
 }
 
 #sound-toggle {
-  right: 1.2rem;
-  top: 1rem;
+  right: calc(1.2rem + env(safe-area-inset-right, 0px));
+  top: calc(1rem + env(safe-area-inset-top, 0px));
 }
 
 #car-return {
-  left: 1.2rem;
-  top: 1rem;
+  left: calc(1.2rem + env(safe-area-inset-left, 0px));
+  top: calc(1rem + env(safe-area-inset-top, 0px));
   opacity: 0;
   pointer-events: none;
 }
@@ -335,4 +341,44 @@ body[data-state="crossing"] .corner,
 body[data-state="returning"] .corner {
   opacity: 0;
   pointer-events: none;
+}
+
+/* 触屏:手指点得到的尺寸。 */
+@media (pointer: coarse) {
+  .corner {
+    font-size: 0.88rem;
+    padding: 1.1em 1.2em;
+  }
+
+  #hint {
+    font-size: clamp(1rem, 4vw, 1.2rem);
+    max-width: 88vw;
+    bottom: calc(14vh + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* 「或保持安静」是手机上的主路径,命中区放大到手指尺寸(布局不动)。 */
+  .veil .linklike {
+    padding: 0.9em 1em;
+    margin: -0.9em -1em;
+  }
+
+  #mode-whisper {
+    font-size: 0.88rem;
+    white-space: normal;
+    max-width: 86vw;
+  }
+
+  #encounter {
+    font-size: 1.05rem;
+    white-space: normal;
+    max-width: 86vw;
+  }
+
+  .veil button {
+    padding: 1.05em 3.4em;
+  }
+
+  .veil {
+    padding-top: 18vh;
+  }
 }

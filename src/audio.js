@@ -171,6 +171,14 @@ export function createAudio(cfg) {
     state.unlocked = true;
   }
 
+  // 手机切后台/锁屏回来,AudioContext 常停在 suspended——雨声无声地死掉。
+  // 任何时机调用都安全:没解锁/已在跑就直接返回。
+  function resumeIfNeeded() {
+    if (ctx && state.unlocked && ctx.state !== "running") {
+      ctx.resume().catch(() => {});
+    }
+  }
+
   function setMuted(muted) {
     state.muted = muted;
     if (master) {
@@ -430,6 +438,7 @@ export function createAudio(cfg) {
   return {
     unlock,
     setMuted,
+    resumeIfNeeded,
     setInside,
     wipeSqueak,
     meltThrough,
