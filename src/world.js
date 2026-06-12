@@ -59,6 +59,34 @@ function makeNoiseTexture(size = 256) {
   return texture;
 }
 
+function makeEnvTexture() {
+  // 一张小小的夜:上半冷蓝渐暗,地平线几抹路灯的暖。
+  // 没有它,车玻璃和金属漆反射不到任何东西,暗面是死黑。
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 64;
+  const ctx = canvas.getContext("2d");
+  const sky = ctx.createLinearGradient(0, 0, 0, 64);
+  sky.addColorStop(0, "#0d1420");
+  sky.addColorStop(0.45, "#060a12");
+  sky.addColorStop(0.55, "#100b06");
+  sky.addColorStop(1, "#020203");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, 128, 64);
+  // 地平线上的暖光点(路灯们)
+  for (const [x, w, a] of [[18, 14, 0.5], [54, 10, 0.35], [86, 16, 0.45], [112, 9, 0.3]]) {
+    const blob = ctx.createRadialGradient(x, 33, 0, x, 33, w);
+    blob.addColorStop(0, `rgba(255, 178, 110, ${a})`);
+    blob.addColorStop(1, "rgba(255, 178, 110, 0)");
+    ctx.fillStyle = blob;
+    ctx.fillRect(x - w, 33 - w, w * 2, w * 2);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.mapping = THREE.EquirectangularReflectionMapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 function makeStreakTexture() {
   // 湿路面上拖长的灯光倒影:一端亮、一端散。
   const canvas = document.createElement("canvas");
@@ -135,6 +163,8 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
   // 之前全场只有自发光贴片,物体近看是无明暗的死黑剪影。
   // 强度是坎德拉:真实路灯几千 cd 量级,夜空环境光也要给足才能读出剪影。
   scene.add(new THREE.HemisphereLight(0x2a3850, 0x0a0c12, 2.5));
+  scene.environment = makeEnvTexture();
+  scene.environmentIntensity = 0.35;
 
   // 路灯灯头的世界坐标,地面 shader 和点光源共用同一张表。
   const lampHeads = [];
@@ -502,23 +532,93 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
     puddles.push({ ...def, uniforms, lastSplashAt: -100 });
   }
 
-  // ------------------------------------------------ 你的车(起点)
-  const car = new THREE.Group();
-  {
-    // 车漆:金属感 + 低粗糙度,夜里路灯扫过去会有高光流动。
-    const bodyMaterial = new THREE.MeshStandardMaterial({
+  // ------------------------------------------------ 车的模型
+  // 低多边形轿车:收肩线的下车身 + 梯形玻璃座舱 + 轮子/后视镜/尾灯。
+  // 停在路边的和深夜路过的,是同一辆车的两种命运。
+
+  // 把盒子的上层顶点向内收,方正的盒子立刻有了车的斜面。
+  function taperTop(geometry, scaleX, scaleZ, shiftZ = 0) {
+    const pos = geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      if (pos.getY(i) > 0) {
+        pos.setX(i, pos.getX(i) * scaleX);
+        pos.setZ(i, pos.getZ(i) * scaleZ + shiftZ);
+      }
+    }
+    geometry.computeVertexNormals();
+    return geometry;
+  }
+
+  function buildCar() {
+    const group = new THREE.Group();
+    const paint = new THREE.MeshStandardMaterial({
       color: 0x1c2330,
       metalness: 0.75,
       roughness: 0.3,
     });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.0, 4.4), bodyMaterial);
-    body.position.y = 0.62;
-    car.add(body);
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.62, 2.4), bodyMaterial);
-    cabin.position.set(0, 1.36, -0.2);
-    car.add(cabin);
-    // 接地阴影:一片压在轮下的暗,车才不会浮在路上。
-    const carShadow = new THREE.Mesh(
+    const glass = new THREE.MeshStandardMaterial({
+      color: 0x0a0d14,
+      metalness: 0.9,
+      roughness: 0.16,
+    });
+    const rubber = new THREE.MeshStandardMaterial({ color: 0x0a0b0d, roughness: 0.92 });
+
+    // 下车身:顶面四角微收出肩线,底部留出离地间隙
+    const body = new THREE.Mesh(taperTop(new THREE.BoxGeometry(1.8, 0.6, 4.35), 0.93, 0.985), paint);
+    body.position.y = 0.61;
+    group.add(body);
+
+    // 座舱:上窄下宽的梯形,顶部整体后移——前挡风比后窗更斜
+    const cabin = new THREE.Mesh(
+      taperTop(new THREE.BoxGeometry(1.64, 0.5, 2.4), 0.74, 0.58, -0.22),
+      glass,
+    );
+    cabin.position.set(0, 1.16, -0.18);
+    group.add(cabin);
+
+    // 四只轮子
+    const wheelGeometry = new THREE.CylinderGeometry(0.31, 0.31, 0.22, 18);
+    wheelGeometry.rotateZ(Math.PI / 2);
+    for (const [wx, wz] of [[-0.78, -1.32], [0.78, -1.32], [-0.78, 1.32], [0.78, 1.32]]) {
+      const wheel = new THREE.Mesh(wheelGeometry, rubber);
+      wheel.position.set(wx, 0.31, wz);
+      group.add(wheel);
+    }
+
+    // 后视镜
+    for (const mx of [-0.92, 0.92]) {
+      const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.07, 0.06), paint);
+      mirror.position.set(mx, 1.0, -1.02);
+      group.add(mirror);
+    }
+
+    // 尾灯反光条(车尾朝 +z)与熄火的头灯
+    for (const lx of [-0.6, 0.6]) {
+      const tail = new THREE.Mesh(
+        new THREE.BoxGeometry(0.36, 0.09, 0.03),
+        new THREE.MeshStandardMaterial({
+          color: 0x140505,
+          emissive: 0x4d0f0a,
+          emissiveIntensity: 0.7,
+          roughness: 0.3,
+        }),
+      );
+      tail.position.set(lx, 0.84, 2.17);
+      group.add(tail);
+      const headlight = new THREE.Mesh(
+        new THREE.BoxGeometry(0.34, 0.1, 0.03),
+        new THREE.MeshStandardMaterial({
+          color: 0x1a222e,
+          metalness: 0.9,
+          roughness: 0.15,
+        }),
+      );
+      headlight.position.set(lx, 0.8, -2.17);
+      group.add(headlight);
+    }
+
+    // 接地阴影:车压住自己的那片暗
+    const shadow = new THREE.Mesh(
       new THREE.PlaneGeometry(2.6, 5.2),
       new THREE.MeshBasicMaterial({
         map: glowTexture,
@@ -528,9 +628,17 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
         depthWrite: false,
       }),
     );
-    carShadow.rotation.x = -Math.PI / 2;
-    carShadow.position.y = 0.015;
-    car.add(carShadow);
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.015;
+    group.add(shadow);
+
+    return group;
+  }
+
+  // ------------------------------------------------ 你的车(起点)
+  const car = new THREE.Group();
+  {
+    car.add(buildCar());
     // 你刚才坐的位置，窗里还留着一点暖。
     const windowGlow = new THREE.Mesh(
       new THREE.PlaneGeometry(0.9, 0.42),
@@ -542,8 +650,9 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
         depthWrite: false,
       }),
     );
-    windowGlow.position.set(-0.86, 1.32, 0.4);
+    windowGlow.position.set(-0.74, 1.16, 0.35);
     windowGlow.rotation.y = -Math.PI / 2;
+    windowGlow.scale.set(0.8, 0.75, 1);
     car.add(windowGlow);
     const innerGlow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: glowTexture,
@@ -552,8 +661,8 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
       depthWrite: false,
       opacity: 0.3,
     }));
-    innerGlow.position.set(-0.9, 1.3, 0.4);
-    innerGlow.scale.setScalar(1.6);
+    innerGlow.position.set(-0.78, 1.15, 0.35);
+    innerGlow.scale.setScalar(1.4);
     car.add(innerGlow);
     car.position.set(1.9, 0, 2.8);
     car.rotation.y = 0.04;
@@ -784,12 +893,7 @@ export function createWorld(renderer, cfg, tier, breathPeriod) {
       tail.scale.setScalar(0.7);
       passingCar.group.add(tail);
     }
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(1.8, 1.3, 4.3),
-      new THREE.MeshStandardMaterial({ color: 0x0c0f15, metalness: 0.7, roughness: 0.3 }),
-    );
-    body.position.y = 0.75;
-    passingCar.group.add(body);
+    passingCar.group.add(buildCar());
     const splashGlow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: glowTexture,
       color: 0x8898ac,
